@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IA Local – Single‑File</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111833; --soft:#1a2347; --accent:#6ee7b7; --accent-2:#8ab4f8; --text:#e6e9f0; --muted:#9aa3b2; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif; background:radial-gradient(80vw 80vh at 10% -10%, #11163b, transparent),
+      radial-gradient(60vw 60vh at 110% 10%, #0f1430, transparent), var(--bg); color:var(--text);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .app{width:min(980px, 100%); height:min(88vh, 900px); display:grid; grid-template-rows:auto 1fr auto; gap:12px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); border:1px solid #1f274d; border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.25); backdrop-filter: blur(8px)}
+    header.card{padding:14px 16px; display:flex; align-items:center; justify-content:space-between}
+    header .brand{display:flex; gap:12px; align-items:center}
+    .logo{width:40px; height:40px; border-radius:12px; background:conic-gradient(from 210deg, var(--accent), var(--accent-2)); display:grid; place-items:center; color:#0b1020; font-weight:900}
+    .brand h1{font-size:18px; margin:0}
+    .brand p{margin:0; color:var(--muted); font-size:12px}
+    .controls{display:flex; gap:8px; align-items:center}
+    select, input[type="text"], input[type="password"], button{height:40px; border-radius:12px; border:1px solid #263160; background:var(--soft); color:var(--text); padding:0 12px; font-size:14px}
+    select, input{outline:none}
+    button{cursor:pointer; font-weight:600}
+    button.primary{background:linear-gradient(180deg, #2a946e, #227e5e); border-color:#1f6d52}
+    button.ghost{background:transparent; border-color:#2a356e}
+    button:disabled{opacity:.6; cursor:not-allowed}
+
+    .chat.card{padding:12px; display:grid; grid-template-rows:1fr auto; height:100%}
+    .messages{overflow:auto; padding:10px; display:flex; flex-direction:column; gap:10px}
+    .msg{max-width:85%; padding:10px 12px; border:1px solid #263160; border-radius:14px; line-height:1.35; white-space:pre-wrap;}
+    .msg.user{background:#17204a; align-self:flex-end}
+    .msg.bot{background:#121a3a; align-self:flex-start}
+    .msg small{display:block; color:var(--muted); margin-top:6px; font-size:11px}
+
+    .composer{display:grid; grid-template-columns:1fr auto; gap:8px; padding:8px}
+    .input-wrap{display:flex; gap:8px}
+    .input-wrap input{flex:1}
+
+    .hint{color:var(--muted); font-size:12px; padding:0 6px 8px}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; background:#0d1433; border:1px solid #253064; border-radius:6px; padding:2px 6px; font-size:12px}
+
+    details.tools{padding:10px; border-top:1px dashed #2b3469}
+    .tool-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:8px; margin-top:8px}
+    .tool{padding:10px; background:#0e1739; border:1px solid #243066; border-radius:12px}
+    .tool h4{margin:0 0 6px; font-size:13px}
+    .tool input, .tool button{width:100%}
+
+    .footer.card{padding:10px; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px}
+    a{color:var(--accent-2); text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="card">
+      <div class="brand">
+        <div class="logo">IA</div>
+        <div>
+          <h1>IA Local (Single‑File)</h1>
+          <p>Funciona 100% em um único .html. Modo offline com regras + opção de API genérica.</p>
+        </div>
+      </div>
+      <div class="controls">
+        <select id="mode">
+          <option value="rules">Modo: Regras (offline)</option>
+          <option value="api" selected>Modo: API (compatível c/ Chat Completions)</option>
+        </select>
+        <button id="clear" class="ghost" title="Limpar conversa">Limpar</button>
+      </div>
+    </header>
+
+    <section class="chat card">
+      <div id="messages" class="messages"></div>
+
+      <div class="hint">Dica: pressione <span class="kbd">Enter</span> para enviar e <span class="kbd">Shift+Enter</span> para quebrar linha.</div>
+      <div class="composer">
+        <div class="input-wrap">
+          <input id="prompt" type="text" placeholder="Pergunte algo…" autocomplete="off" />
+        </div>
+        <button id="send" class="primary">Enviar</button>
+      </div>
+      
+      <details class="tools">
+        <summary>⚙️ Configuração do modo API (opcional)</summary>
+        <div class="tool-grid">
+          <div class="tool">
+            <h4>Endpoint (URL)</h4>
+            <input id="api-url" type="text" placeholder="https://SEU_ENDPOINT/v1/chat/completions" />
+          </div>
+          <div class="tool">
+            <h4>Chave (Bearer)</h4>
+            <input id="api-key" type="password" placeholder="sk-..." />
+          </div>
+          <div class="tool">
+            <h4>Modelo</h4>
+            <input id="api-model" type="text" placeholder="nome-do-modelo" />
+          </div>
+          <div class="tool">
+            <h4>Teste rápido</h4>
+            <button id="test-api">Enviar ping</button>
+          </div>
+        </div>
+        <p class="hint">Este cliente usa o formato <em>Chat Completions</em>. Exige um provedor compatível e CORS liberado.</p>
+      </details>
+    </section>
+
+    <footer class="footer card">
+      <div>Feito para rodar em arquivo único .html • Sem dependências externas • Armazena conversa no <span class="kbd">localStorage</span>.</div>
+      <div><a href="#" id="export">Exportar conversa (.json)</a></div>
+    </footer>
+  </div>
+
+  <script>
+    const $ = s => document.querySelector(s);
+    const messagesEl = $('#messages');
+    const inputEl = $('#prompt');
+    const sendBtn = $('#send');
+    const clearBtn = $('#clear');
+    const exportBtn = $('#export');
+    const modeEl = $('#mode');
+    const apiUrlEl = $('#api-url');
+    const apiKeyEl = $('#api-key');
+    const apiModelEl = $('#api-model');
+    const testApiBtn = $('#test-api');
+
+    const STORAGE_KEY = 'singlefile-ia-chat-v1';
+
+    const state = {
+      mode: localStorage.getItem('mode') || 'api',
+      history: JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'),
+      api: {
+        url: localStorage.getItem('api.url') || '',
+        key: localStorage.getItem('api.key') || '',
+        model: localStorage.getItem('api.model') || ''
+      }
+    };
+
+    function renderAll(){
+      modeEl.value = state.mode;
+      apiUrlEl.value = state.api.url;
+      apiKeyEl.value = state.api.key;
+      apiModelEl.value = state.api.model;
+      messagesEl.innerHTML = '';
+      if(state.history.length===0){
+        addBot(`Olá! Eu sou uma IA em arquivo único.\n\n• <b>Modo Regras</b> (offline): responde com heurísticas locais e utilitários (hora, calculadora, etc.).\n• <b>Modo API</b> (opcional): aponte para um endpoint compatível.`, 'init');
+      } else {
+        state.history.forEach(m => addBubble(m.role, m.content, true));
+      }
+      scrollBottom();
+    }
+
+    function addBubble(role, html, fromHistory=false){
+      const div = document.createElement('div');
+      div.className = `msg ${role==='user'?'user':'bot'}`;
+      div.innerHTML = html;
+      messagesEl.appendChild(div);
+      if(!fromHistory){
+        state.history.push({role, content:html});
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.history));
+      }
+    }
+
+    function addUser(text){ addBubble('user', escapeHtml(text)); }
+    function addBot(text){ addBubble('assistant', markdownToHtml(text)); }
+    function scrollBottom(){ messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+    function escapeHtml(s){
+      return s.replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+    }
+
+    function markdownToHtml(s){
+      return escapeHtml(s).replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s)]+)[)\]]?/g, '<a target="_blank" rel="noopener noreferrer" href="$1">$1</a>');
+    }
+
+    function replyRules(user){
+      const u = user.trim();
+      const mathAns = tryCalc(u);
+      if(mathAns !== null){ return `Resultado: <b>${mathAns}</b>`; }
+      if(/\b(que horas|hora|time)\b/i.test(u)){
+        const now = new Date();
+        return `Agora são ${now.toLocaleTimeString()} de ${now.toLocaleDateString()}.`;
+      }
+      if(/\b(data|hoje|dia)\b/i.test(u)){
+        const now = new Date();
+        return `Hoje é ${now.toLocaleDateString()} (${now.toLocaleString(undefined,{weekday:'long'})}).`;
+      }
+      const defMatch = u.match(/^defin(?:a|ir|e)\s+(.+)/i) || u.match(/^o que é\s+(.+)/i);
+      if(defMatch){ return `Definição breve de "${escapeHtml(defMatch[1])}" (heurística local).`; }
+      if(/\b(oi|olá|ola|hey|help|ajuda)\b/i.test(u)){ return "Oi! Posso calcular, dizer hora/data ou responder no modo API se configurado."; }
+      if(/piada|engraçad|meme/i.test(u)){ return "Por que o bit foi ao médico? Porque estava com um parafuso a menos 😉"; }
+      return "Não tenho conhecimento externo no modo offline. Ative o modo API para respostas mais ricas.";
+    }
+
+    function tryCalc(text){
+      const ok = /^[0-9+\-*/().,\s^%]+$/.test(text);
+      if(!ok) return null;
+      try{
+        const expr = text.replace(/,/g, '.').replace(/\^/g,'**');
+        const val = Function(`"use strict"; return (${expr})`)();
+        if(typeof val === 'number' && Number.isFinite(val)){
+          return Math.round((val + Number.EPSILON) * 1e12)/1e12;
+        }
+        return null;
+      }catch(e){ return null; }
+    }
+
+    async function replyApi(user){
+      const url = state.api.url.trim();
+      const key = state.api.key.trim();
+      const model = state.api.model.trim();
+      if(!url || !key || !model){ return 'Configure URL, chave e modelo para usar a API.'; }
+      const history = state.history
+        .filter(m => m.role==='user' || m.role==='assistant')
+        .map(m => ({ role: m.role==='assistant' ? 'assistant' : 'user', content: stripHtml(m.content) }));
+      history.push({role:'user', content:user});
+      try{
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+          body: JSON.stringify({
+            model,
+            messages: [{ role:'system', content:'Você é um assistente útil. Responda em português do Brasil de forma clara.' }, ...history]
+          })
+        });
+        if(!res.ok){ const text = await res.text(); throw new Error(`HTTP ${res.status}: ${text}`); }
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content || '[Sem conteúdo]';
+      } catch(err){
+        return `Erro ao chamar API: ${err.message}`;
+      }
+    }
+
+    function stripHtml(html){
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html; return tmp.textContent || tmp.innerText || '';
+    }
+
+    sendBtn.addEventListener('click', onSend);
+    inputEl.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); onSend(); } });
+    clearBtn.addEventListener('click', () => { state.history = []; localStorage.removeItem(STORAGE_KEY); renderAll(); });
+    exportBtn.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(state.history, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      exportBtn.href = url; exportBtn.download = 'conversa.json';
+    });
+    modeEl.addEventListener('change', () => { state.mode = modeEl.value; localStorage.setItem('mode', state.mode); });
+    apiUrlEl.addEventListener('input', () => { state.api.url = apiUrlEl.value; localStorage.setItem('api.url', state.api.url); });
+    apiKeyEl.addEventListener('input', () => { state.api.key = apiKeyEl.value; localStorage.setItem('api.key', state.api.key); });
+    apiModelEl.addEventListener('input', () => { state.api.model = apiModelEl.value; localStorage.setItem('api.model', state.api.model); });
+
+    testApiBtn.addEventListener('click', async () => {
+      const reply = await replyApi('Diga apenas: ok');
+      addUser('[Teste API]'); addBot(reply); scrollBottom();
+    });
+
+    async function onSend(){
+      const text = inputEl.value.trim();
+      if(!text) return;
+      addUser(text);
+      inputEl.value=''; inputEl.focus(); scrollBottom();
+      let reply = '';
+      if(modeEl.value==='rules') reply = replyRules(text);
+      else reply = await replyApi(text);
+      addBot(reply); scrollBottom();
+    }
+
+    renderAll();
+  </script>
+</body>
+</html>

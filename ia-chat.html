@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IA Multi-Chat</title>
+<style>
+:root {
+  --bg:#0b1020; --panel:#111833; --soft:#1a2347; --accent:#6ee7b7; --accent-2:#8ab4f8; --text:#e6e9f0; --muted:#9aa3b2;
+}
+* {box-sizing:border-box;}
+html,body{margin:0;height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);}
+body{display:flex;}
+.sidebar {width:220px;background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:8px;}
+.sidebar button{background:var(--soft);border:none;color:var(--text);padding:8px;border-radius:8px;cursor:pointer;text-align:left;}
+.sidebar button.active{background:var(--accent-2);color:#0b1020;}
+.main {flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;}
+.chat-window {flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;background:var(--panel);padding:10px;border-radius:12px;}
+.msg {padding:10px 12px;border-radius:12px;max-width:80%;line-height:1.4;}
+.msg.user{align-self:flex-end;background:#17204a;}
+.msg.bot{align-self:flex-start;background:#121a3a;}
+.composer {display:flex;gap:8px;}
+.composer input{flex:1;padding:10px;border-radius:12px;border:1px solid #263160;background:var(--soft);color:var(--text);}
+.composer button{padding:10px 14px;border-radius:12px;border:none;background:var(--accent-2);color:#0b1020;font-weight:600;cursor:pointer;}
+.status{font-size:12px;color:var(--accent);}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <button id="newChat">+ Novo Chat</button>
+  <div id="chatList"></div>
+</div>
+<div class="main">
+  <div class="header">
+    <div id="chatTitle">Chat 1</div>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="chat-window" id="messages"></div>
+  <div class="composer">
+    <input id="prompt" type="text" placeholder="Digite sua mensagem...">
+    <button id="send">Enviar</button>
+  </div>
+  <div style="margin-top:8px;">
+    <select id="mode">
+      <option value="rules" selected>Modo: Regras (offline)</option>
+      <option value="api">Modo: API</option>
+    </select>
+    <input id="api-url" type="text" placeholder="URL da API" style="width:50%;margin-left:8px;">
+    <input id="api-key" type="password" placeholder="Bearer Key" style="width:40%;margin-left:8px;">
+  </div>
+</div>
+
+<script>
+const promptEl = document.getElementById('prompt');
+const sendBtn = document.getElementById('send');
+const messagesEl = document.getElementById('messages');
+const statusEl = document.getElementById('status');
+const chatListEl = document.getElementById('chatList');
+const chatTitleEl = document.getElementById('chatTitle');
+const newChatBtn = document.getElementById('newChat');
+const modeEl = document.getElementById('mode');
+const apiUrlEl = document.getElementById('api-url');
+const apiKeyEl = document.getElementById('api-key');
+
+let chats = JSON.parse(localStorage.getItem('chats')) || [{name:'Chat 1', history:[]}];
+let currentChat = 0;
+
+// ===== Render chats =====
+function renderChats(){
+  chatListEl.innerHTML='';
+  chats.forEach((c,i)=>{
+    const btn = document.createElement('button');
+    btn.textContent = c.name;
+    btn.className = i===currentChat?'active':'';
+    btn.onclick=()=>{ currentChat=i; renderChats(); renderMessages(); };
+    chatListEl.appendChild(btn);
+  });
+  chatTitleEl.textContent = chats[currentChat].name;
+}
+
+// ===== Render mensagens =====
+function renderMessages(){
+  messagesEl.innerHTML='';
+  chats[currentChat].history.forEach(m=>{
+    addBubble(m.role,m.content,true);
+  });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// ===== Adiciona bolha =====
+function addBubble(role,text,fromHistory=false){
+  const div = document.createElement('div');
+  div.className='msg '+(role==='user'?'user':'bot');
+  div.innerHTML = text.replace(/\n/g,'<br>');
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  if(!fromHistory){
+    chats[currentChat].history.push({role,text});
+    localStorage.setItem('chats',JSON.stringify(chats));
+  }
+}
+
+// ===== Regras offline =====
+function replyRules(user){
+  if(/piada|engraçad|meme/i.test(user)) return "Por que o bit foi ao médico? Porque estava com um parafuso a menos 😉";
+  if(/\b(que horas|hora|time)\b/i.test(user)){ const now=new Date(); return `Agora são ${now.toLocaleTimeString()}`; }
+  if(/\b(data|hoje|dia)\b/i.test(user)){ const now=new Date(); return `Hoje é ${now.toLocaleDateString()}`; }
+  const mathAns = tryCalc(user);
+  if(mathAns!==null) return `Resultado: ${mathAns}`;
+  return "Modo offline: não sei responder isso. Ative API para respostas completas.";
+}
+
+function tryCalc(text){
+  if(!/^[0-9+\-*/().,\s^%]+$/.test(text)) return null;
+  try{ const expr=text.replace(/,/g,'.').replace(/\^/g,'**'); const val=Function('"use strict";return('+expr+')')(); return Number.isFinite(val)?Math.round((val+Number.EPSILON)*1e12)/1e12:null; }
+  catch(e){ return null; }
+}
+
+// ===== API =====
+async function replyApi(user){
+  const url=apiUrlEl.value.trim(), key=apiKeyEl.value.trim();
+  if(!url || !key) return "Configure URL e Bearer Key.";
+  const messages = chats[currentChat].history.map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+  messages.push({role:'user',content:user});
+  try{
+    const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:'gpt-3.5-turbo',messages})});
+    if(!res.ok){const t=await res.text();throw new Error(`HTTP ${res.status}: ${t}`);}
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content||"[Sem resposta]";
+  }catch(e){return "Erro ao chamar API: "+e.message;}
+}
+
+// ===== Envio de mensagem =====
+async function sendMessage(){
+  const text = promptEl.value.trim();
+  if(!text) return;
+  addBubble('user',text);
+  promptEl.value='';
+  promptEl.disabled=true; sendBtn.disabled=true;
+  statusEl.textContent='IA está pensando...';
+  let reply='';
+  if(modeEl.value==='rules') reply=replyRules(text);
+  else reply=await replyApi(text);
+  addBubble('bot',reply);
+  statusEl.textContent='';
+  promptEl.disabled=false; sendBtn.disabled=false;
+  promptEl.focus();
+}
+
+sendBtn.onclick=sendMessage;
+promptEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
+newChatBtn.onclick=()=>{ const name='Chat '+(chats.length+1); chats.push({name,history:[]}); currentChat=chats.length-1; localStorage.setItem('chats',JSON.stringify(chats)); renderChats(); renderMessages(); };
+
+renderChats(); renderMessages();
+</script>
+</body>
+</html>
